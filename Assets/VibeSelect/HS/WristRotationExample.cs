@@ -35,7 +35,7 @@ public class WristRotationExample : MonoBehaviour
     /// </summary>
     void HandleRotationStart(Vector3 axis, float angle)
     {
-        Debug.Log($"<color=green>회전 시작!</color> 축: {axis}, 각도: {angle:F2}°");
+        Debug.Log($"<color=green>회전 시작</color> 축: {axis}, 각도: {angle:F2}°");
 
         // 사운드 재생
         if (audioSource && rotationStartSound)
@@ -61,9 +61,6 @@ public class WristRotationExample : MonoBehaviour
     /// </summary>
     void HandleRotating(Vector3 axis, float angle)
     {
-        // 프레임마다 로그를 찍으면 너무 많으므로 필요시에만 활성화
-        // Debug.Log($"<color=yellow>회전 중...</color> 축: {axis}, 각도 변화: {angle:F2}°");
-
         // 실시간 회전 반영 (예: 오브젝트 회전)
         UpdateRotatingObject(axis, angle);
     }
@@ -73,7 +70,7 @@ public class WristRotationExample : MonoBehaviour
     /// </summary>
     void HandleZAxisMovement(float distance)
     {
-        Debug.Log($"<color=cyan>찌르기 감지!</color> 거리: {distance:F3}m");
+        Debug.Log($"<color=cyan>Z축 이동 감지/color> 거리: {distance:F3}m");
     }
 
     /// <summary>
@@ -103,26 +100,21 @@ public class WristRotationExample : MonoBehaviour
     /// </summary>
     void ApplyRotationLogic(Vector3 axis, float angle)
     {
-        // 예시 1: 손목 회전으로 무기 스킬 활성화
         if (Mathf.Abs(axis.z) > 0.7f) // Z축 회전 (손목 비틀기)
         {
             if (angle > 30f)
             {
-                Debug.Log("→ 스킬 발동: 시계방향 회전 공격!");
-                // ActivateClockwiseSkill();
+                Debug.Log("Z축 시계방향 회전");
             }
             else if (angle < -30f)
             {
-                Debug.Log("→ 스킬 발동: 반시계방향 회전 공격!");
-                // ActivateCounterClockwiseSkill();
+                Debug.Log("Z축 반시계방향 회전");
             }
         }
 
-        // 예시 2: 손목 회전으로 UI 메뉴 열기
         else if (Mathf.Abs(axis.y) > 0.7f) // Y축 회전
         {
-            Debug.Log("→ 메뉴 열기");
-            // OpenRadialMenu();
+            Debug.Log("Y축 회전");
         }
     }
 

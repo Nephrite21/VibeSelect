@@ -11,63 +11,67 @@ public class WristRotationDetector : MonoBehaviour
     [Header("Controller Settings")]
     [Tooltip("감지할 컨트롤러 (Left/Right)")]
     public XRNode controllerNode = XRNode.RightHand;
-    
+
     [Header("Rotation Detection Settings")]
     [Tooltip("회전 감지를 위한 이전 프레임 수")]
     [Range(5, 30)]
     public int rotationHistorySize = 10;
-    
+
     [Tooltip("회전으로 인식하기 위한 최소 각도 (도)")]
     [Range(5f, 45f)]
     public float rotationThreshold = 15f;
-    
+
     [Tooltip("회전 중으로 판단하기 위한 최소 각속도 (도/초)")]
     [Range(10f, 200f)]
     public float angularVelocityThreshold = 30f;
-    
+
     [Tooltip("회전이 끝났다고 판단하는 각속도 임계값 (도/초)")]
     [Range(5f, 50f)]
     public float rotationEndThreshold = 15f;
-    
+
+    [Tooltip("주요 축으로 인식하기 위한 최소 비율 (다른 축 대비)")]
+    [Range(1.2f, 5f)]
+    public float dominantAxisRatio = 1.8f;
+
     [Header("Z-Axis Movement Settings")]
     [Tooltip("Z축 이동 감지를 위한 이전 프레임 수")]
     [Range(5, 30)]
     public int zMovementHistorySize = 10;
-    
+
     [Tooltip("Z축 이동으로 인식하기 위한 최소 거리 (미터)")]
     [Range(0.05f, 0.5f)]
     public float zMovementThreshold = 0.1f;
-    
+
     [Tooltip("Z축 이동 속도 임계값 (미터/초)")]
     [Range(0.1f, 2f)]
     public float zVelocityThreshold = 0.3f;
-    
+
     [Header("Smoothing Settings")]
     [Tooltip("회전 축 스무딩 강도 (0=없음, 1=최대)")]
     [Range(0f, 1f)]
     public float axisSmoothing = 0.3f;
-    
+
     [Header("Events")]
     [Tooltip("회전이 시작되었을 때 발생 (주요 축, 각도)")]
     public UnityEvent<Vector3, float> OnTwisted;
-    
+
     [Tooltip("회전 중일 때 지속적으로 발생 (주요 축, 각도)")]
     public UnityEvent<Vector3, float> WhileTwisted;
-    
+
     [Tooltip("Z축 방향으로 이동(찌르기)했을 때 발생 (이동 거리)")]
     public UnityEvent<float> OnZAxisMoved;
-    
+
     // 내부 상태 변수
     private Queue<Quaternion> rotationHistory = new Queue<Quaternion>();
     private Queue<Vector3> positionHistory = new Queue<Vector3>();
     private bool isRotating = false;
     private Vector3 currentRotationAxis = Vector3.zero;
-    private Vector3 smoothedRotationAxis = Vector3.zero;
+    private Vector3 dominantAxis = Vector3.zero;  // 주요 회전 축
     private float accumulatedRotation = 0f;
-    
+
     // 컨트롤러 입력 장치
     private InputDevice targetDevice;
-    
+
     // 이전 프레임 데이터
     private Quaternion previousRotation;
     private Vector3 previousPosition;
@@ -85,11 +89,11 @@ public class WristRotationDetector : MonoBehaviour
             InitializeDevice();
             return;
         }
-        
+
         // 현재 컨트롤러의 위치와 회전 가져오기
         Vector3 currentPosition;
         Quaternion currentRotation;
-        
+
         if (targetDevice.TryGetFeatureValue(CommonUsages.devicePosition, out currentPosition) &&
             targetDevice.TryGetFeatureValue(CommonUsages.deviceRotation, out currentRotation))
         {
@@ -100,13 +104,13 @@ public class WristRotationDetector : MonoBehaviour
                 isInitialized = true;
                 return;
             }
-            
+
             // 회전 감지 처리
             ProcessRotation(currentRotation);
-            
+
             // Z축 이동 감지 처리
             ProcessZAxisMovement(currentPosition, currentRotation);
-            
+
             // 이전 프레임 데이터 업데이트
             previousRotation = currentRotation;
             previousPosition = currentPosition;
@@ -119,12 +123,12 @@ public class WristRotationDetector : MonoBehaviour
     void InitializeDevice()
     {
         targetDevice = InputDevices.GetDeviceAtXRNode(controllerNode);
-        
+
         if (!targetDevice.isValid)
         {
             List<InputDevice> devices = new List<InputDevice>();
             InputDevices.GetDevicesAtXRNode(controllerNode, devices);
-            
+
             if (devices.Count > 0)
             {
                 targetDevice = devices[0];
@@ -143,54 +147,68 @@ public class WristRotationDetector : MonoBehaviour
         {
             rotationHistory.Dequeue();
         }
-        
+
         if (rotationHistory.Count < rotationHistorySize)
         {
             return;
         }
-        
+
         // 프레임 간 회전 차이 계산
         Quaternion deltaRotation = currentRotation * Quaternion.Inverse(previousRotation);
         deltaRotation.ToAngleAxis(out float frameAngle, out Vector3 frameAxis);
-        
+
         // -180 ~ 180 범위로 정규화
         if (frameAngle > 180f)
         {
             frameAngle -= 360f;
         }
-        
+
         // 각속도 계산 (도/초)
         float angularVelocity = Mathf.Abs(frameAngle) / Time.deltaTime;
-        
+
         // 히스토리의 첫 번째와 마지막 회전 간의 차이 계산
         Quaternion oldestRotation = rotationHistory.Peek();
         Quaternion totalDeltaRotation = currentRotation * Quaternion.Inverse(oldestRotation);
         totalDeltaRotation.ToAngleAxis(out float totalAngle, out Vector3 totalAxis);
-        
+
         // -180 ~ 180 범위로 정규화
         if (totalAngle > 180f)
         {
             totalAngle -= 360f;
         }
-        
+
+        // 컨트롤러 로컬 공간으로 변환
+        Vector3 localAxis = transform.InverseTransformDirection(totalAxis.normalized);
+
         // 회전 감지 로직
         if (!isRotating)
         {
             // 회전 시작 감지: threshold 이상 회전 + 충분한 각속도
-            if (Mathf.Abs(totalAngle) >= rotationThreshold && 
+            if (Mathf.Abs(totalAngle) >= rotationThreshold &&
                 angularVelocity >= angularVelocityThreshold)
             {
-                isRotating = true;
-                currentRotationAxis = totalAxis.normalized;
-                smoothedRotationAxis = currentRotationAxis;
-                accumulatedRotation = totalAngle;
-                
-                // 컨트롤러 로컬 공간으로 변환
-                Vector3 localAxis = transform.InverseTransformDirection(currentRotationAxis);
-                
-                OnTwisted?.Invoke(localAxis, totalAngle);
-                
-                Debug.Log($"[Rotation Started] Axis: {localAxis}, Angle: {totalAngle:F2}°, Angular Velocity: {angularVelocity:F2}°/s");
+                // 주요 축이 명확한지 확인
+                Vector3 candidateDominantAxis = GetDominantAxis(localAxis);
+
+                if (IsDominantAxisClear(localAxis, candidateDominantAxis))
+                {
+                    isRotating = true;
+                    currentRotationAxis = totalAxis.normalized;
+                    dominantAxis = candidateDominantAxis;  // 주요 축 저장
+                    accumulatedRotation = totalAngle;
+
+                    // 주요 축의 회전량만 추출
+                    float dominantAngle = ExtractDominantAxisRotation(localAxis, totalAngle);
+
+                    OnTwisted?.Invoke(dominantAxis, dominantAngle);
+
+                    Debug.Log($"[Rotation Started] Dominant Axis: {AxisToString(dominantAxis)}, Angle: {dominantAngle:F2}°, Angular Velocity: {angularVelocity:F2}°/s");
+                }
+                else
+                {
+                    // 주요 축이 명확하지 않으면 무시 (여러 축 혼합 회전)
+                    Debug.Log($"[Rotation Ignored] No clear dominant axis. Axis components: X={localAxis.x:F2}, Y={localAxis.y:F2}, Z={localAxis.z:F2}");
+                }
             }
         }
         else
@@ -198,32 +216,41 @@ public class WristRotationDetector : MonoBehaviour
             // 회전 중
             if (angularVelocity >= rotationEndThreshold)
             {
-                // 현재 프레임의 회전 축 업데이트 (스무딩 적용)
-                if (frameAngle > 1f) // 의미있는 회전만 고려
+                // 프레임 단위 회전 축 계산
+                Vector3 frameLocalAxis = transform.InverseTransformDirection(frameAxis.normalized);
+
+                // 현재 주요 축과 일치하는지 확인 (같은 축으로 계속 회전 중인지)
+                if (IsSameAxisDirection(frameLocalAxis, dominantAxis))
                 {
-                    currentRotationAxis = frameAxis.normalized;
-                    smoothedRotationAxis = Vector3.Lerp(smoothedRotationAxis, currentRotationAxis, 1f - axisSmoothing).normalized;
+                    accumulatedRotation += frameAngle;
+
+                    // 주요 축의 회전량만 추출
+                    float dominantFrameAngle = ExtractDominantAxisRotation(frameLocalAxis, frameAngle);
+
+                    WhileTwisted?.Invoke(dominantAxis, dominantFrameAngle);
+
+                    // 디버그 정보 (매 10프레임마다)
+                    if (Time.frameCount % 10 == 0)
+                    {
+                        Debug.Log($"[Rotating] Axis: {AxisToString(dominantAxis)}, Frame Angle: {dominantFrameAngle:F2}°, Total: {accumulatedRotation:F2}°");
+                    }
                 }
-                
-                accumulatedRotation += frameAngle;
-                
-                // 컨트롤러 로컬 공간으로 변환
-                Vector3 localAxis = transform.InverseTransformDirection(smoothedRotationAxis);
-                
-                WhileTwisted?.Invoke(localAxis, frameAngle);
-                
-                // 디버그 정보 (매 프레임마다는 부담스러우므로 간헐적으로)
-                if (Time.frameCount % 10 == 0)
+                else
                 {
-                    Debug.Log($"[Rotating] Axis: {localAxis}, Frame Angle: {frameAngle:F2}°, Total: {accumulatedRotation:F2}°");
+                    // 다른 축으로 회전하기 시작하면 회전 종료
+                    Debug.Log($"[Rotation Ended] Axis changed - ending rotation");
+                    isRotating = false;
+                    accumulatedRotation = 0f;
+                    dominantAxis = Vector3.zero;
                 }
             }
             else
             {
                 // 회전 종료
                 isRotating = false;
-                Debug.Log($"[Rotation Ended] Total Rotation: {accumulatedRotation:F2}°");
+                Debug.Log($"[Rotation Ended] Total Rotation: {accumulatedRotation:F2}° on {AxisToString(dominantAxis)} axis");
                 accumulatedRotation = 0f;
+                dominantAxis = Vector3.zero;
             }
         }
     }
@@ -239,35 +266,35 @@ public class WristRotationDetector : MonoBehaviour
         {
             positionHistory.Dequeue();
         }
-        
+
         if (positionHistory.Count < zMovementHistorySize)
         {
             return;
         }
-        
+
         // 컨트롤러의 로컬 Z축 방향 (월드 공간)
         Vector3 controllerForward = currentRotation * Vector3.forward;
-        
+
         // 히스토리 기간 동안의 총 이동
         Vector3 oldestPosition = positionHistory.Peek();
         Vector3 totalMovement = currentPosition - oldestPosition;
-        
+
         // Z축 방향으로의 투영 (컨트롤러 기준)
         float zMovement = Vector3.Dot(totalMovement, controllerForward);
-        
+
         // 프레임 간 이동으로 속도 계산
         Vector3 frameMovement = currentPosition - previousPosition;
         float frameZMovement = Vector3.Dot(frameMovement, controllerForward);
         float zVelocity = Mathf.Abs(frameZMovement) / Time.deltaTime;
-        
+
         // Z축 이동 감지
-        if (Mathf.Abs(zMovement) >= zMovementThreshold && 
+        if (Mathf.Abs(zMovement) >= zMovementThreshold &&
             zVelocity >= zVelocityThreshold)
         {
             OnZAxisMoved?.Invoke(zMovement);
-            
+
             Debug.Log($"[Z-Axis Movement] Distance: {zMovement:F3}m, Velocity: {zVelocity:F2}m/s");
-            
+
             // 이벤트 발생 후 히스토리 초기화 (중복 감지 방지)
             positionHistory.Clear();
         }
@@ -279,7 +306,7 @@ public class WristRotationDetector : MonoBehaviour
     Vector3 GetDominantAxis(Vector3 axis)
     {
         Vector3 absAxis = new Vector3(Mathf.Abs(axis.x), Mathf.Abs(axis.y), Mathf.Abs(axis.z));
-        
+
         if (absAxis.x > absAxis.y && absAxis.x > absAxis.z)
         {
             return new Vector3(Mathf.Sign(axis.x), 0, 0);
@@ -292,6 +319,91 @@ public class WristRotationDetector : MonoBehaviour
         {
             return new Vector3(0, 0, Mathf.Sign(axis.z));
         }
+    }
+
+    /// <summary>
+    /// 주요 축이 명확한지 확인 (다른 축들보다 충분히 큰지)
+    /// </summary>
+    bool IsDominantAxisClear(Vector3 axis, Vector3 dominantAxis)
+    {
+        Vector3 absAxis = new Vector3(Mathf.Abs(axis.x), Mathf.Abs(axis.y), Mathf.Abs(axis.z));
+
+        float maxComponent = 0f;
+        float secondMaxComponent = 0f;
+
+        // 최대값과 두 번째 최대값 찾기
+        if (absAxis.x >= absAxis.y && absAxis.x >= absAxis.z)
+        {
+            maxComponent = absAxis.x;
+            secondMaxComponent = Mathf.Max(absAxis.y, absAxis.z);
+        }
+        else if (absAxis.y >= absAxis.x && absAxis.y >= absAxis.z)
+        {
+            maxComponent = absAxis.y;
+            secondMaxComponent = Mathf.Max(absAxis.x, absAxis.z);
+        }
+        else
+        {
+            maxComponent = absAxis.z;
+            secondMaxComponent = Mathf.Max(absAxis.x, absAxis.y);
+        }
+
+        // 최대 성분이 두 번째로 큰 성분보다 dominantAxisRatio배 이상 큰지 확인
+        if (secondMaxComponent < 0.001f) // 0으로 나누기 방지
+        {
+            return true;
+        }
+
+        return (maxComponent / secondMaxComponent) >= dominantAxisRatio;
+    }
+
+    /// <summary>
+    /// 주요 축의 회전량만 추출
+    /// </summary>
+    float ExtractDominantAxisRotation(Vector3 localAxis, float totalAngle)
+    {
+        Vector3 absAxis = new Vector3(Mathf.Abs(localAxis.x), Mathf.Abs(localAxis.y), Mathf.Abs(localAxis.z));
+
+        // 주요 축의 성분 비율을 곱해서 해당 축의 회전량 추정
+        if (absAxis.x > absAxis.y && absAxis.x > absAxis.z)
+        {
+            return totalAngle * Mathf.Sign(localAxis.x);
+        }
+        else if (absAxis.y > absAxis.z)
+        {
+            return totalAngle * Mathf.Sign(localAxis.y);
+        }
+        else
+        {
+            return totalAngle * Mathf.Sign(localAxis.z);
+        }
+    }
+
+    /// <summary>
+    /// 두 축이 같은 방향인지 확인 (부호 포함)
+    /// </summary>
+    bool IsSameAxisDirection(Vector3 axis1, Vector3 axis2)
+    {
+        // 두 축의 내적이 양수이고 충분히 큰지 확인
+        float dot = Vector3.Dot(axis1.normalized, axis2.normalized);
+        return dot > 0.7f; // 약 45도 이내
+    }
+
+    /// <summary>
+    /// 축을 문자열로 변환 (디버그용)
+    /// </summary>
+    string AxisToString(Vector3 axis)
+    {
+        if (axis == Vector3.zero) return "None";
+
+        if (Mathf.Abs(axis.x) > 0.5f)
+            return axis.x > 0 ? "+X (Right)" : "-X (Left)";
+        else if (Mathf.Abs(axis.y) > 0.5f)
+            return axis.y > 0 ? "+Y (Up)" : "-Y (Down)";
+        else if (Mathf.Abs(axis.z) > 0.5f)
+            return axis.z > 0 ? "+Z (Forward)" : "-Z (Backward)";
+
+        return "Mixed";
     }
 
     void OnValidate()
@@ -317,14 +429,21 @@ public class WristRotationDetector : MonoBehaviour
         {
             return;
         }
-        
-        // 현재 회전 축 시각화
+
+        // 주요 회전 축 시각화 (굵은 선)
         Gizmos.color = Color.yellow;
-        Vector3 worldAxis = transform.TransformDirection(smoothedRotationAxis);
-        Gizmos.DrawRay(transform.position, worldAxis * 0.2f);
-        
+        Vector3 worldDominantAxis = transform.TransformDirection(dominantAxis);
+        Gizmos.DrawRay(transform.position, worldDominantAxis * 0.2f);
+        Gizmos.DrawRay(transform.position + worldDominantAxis * 0.2f, worldDominantAxis * 0.05f);
+
         // 컨트롤러 Z축 시각화
         Gizmos.color = Color.blue;
         Gizmos.DrawRay(transform.position, transform.forward * 0.15f);
+
+        // 컨트롤러 X, Y축도 표시
+        Gizmos.color = Color.red;
+        Gizmos.DrawRay(transform.position, transform.right * 0.1f);
+        Gizmos.color = Color.green;
+        Gizmos.DrawRay(transform.position, transform.up * 0.1f);
     }
 }
