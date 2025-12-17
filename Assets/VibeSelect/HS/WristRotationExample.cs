@@ -70,7 +70,7 @@ public class WristRotationExample : MonoBehaviour
     /// </summary>
     void HandleZAxisMovement(float distance)
     {
-        Debug.Log($"<color=cyan>Z축 이동 감지/color> 거리: {distance:F3}m");
+        Debug.Log($"<color=cyan>Z축 이동 감지</color> 거리: {distance:F3}m");
     }
 
     /// <summary>
