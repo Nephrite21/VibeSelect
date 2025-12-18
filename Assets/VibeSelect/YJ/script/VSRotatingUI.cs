@@ -62,15 +62,17 @@ public class VSRotatingUI : MonoBehaviour
         SnapToNearestSegment();
     }
 
-    private void SnapToNearestSegment()
+    public void SnapToNearestSegment()
     {
+        isHeld = false;
+        interactor = null;
         //float zAngle = transform.eulerAngles.z % 360f;
         //if (zAngle < 0) zAngle += 360f;
 
         //float topAngle = (360f - zAngle) % 360f;
 
         float z360 = transform.eulerAngles.z;           // 0..360
-        float topAngle = Mathf.DeltaAngle(0f, z360);
+        float topAngle = Mathf.DeltaAngle(0f, z360);   //-180~180
         int selectedSegment = GetSelectedSegment(topAngle);
 
         if (!Button.activeSelf) Button.SetActive(true);//벝은 활성화
