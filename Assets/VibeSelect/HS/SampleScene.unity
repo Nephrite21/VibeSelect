@@ -8050,7 +8050,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   wristDetector: {fileID: 0}
-  rotationIndicator: {fileID: 0}
+  rotationIndicator: {fileID: 1370332002}
   rotationAxisLine: {fileID: 0}
   audioSource: {fileID: 0}
   rotationStartSound: {fileID: 0}
@@ -8068,14 +8068,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   controllerNode: 5
+  detectionAxis: 0
   rotationHistorySize: 10
   rotationThreshold: 15
   angularVelocityThreshold: 30
   rotationEndThreshold: 15
+  dominantAxisRatio: 1.8
   zMovementHistorySize: 10
   zMovementThreshold: 0.1
   zVelocityThreshold: 0.3
-  axisSmoothing: 0.3
   OnTwisted:
     m_PersistentCalls:
       m_Calls: []
@@ -10221,6 +10222,11 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1366150440}
   m_CullTransparentMesh: 1
+--- !u!1 &1370332002 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 3831360189476385684, guid: c72778ad3d61c1c4286eb3a2aeb02741, type: 3}
+  m_PrefabInstance: {fileID: 6242179681828506539}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1390846723
 GameObject:
   m_ObjectHideFlags: 0
@@ -12698,7 +12704,7 @@ Light:
   m_BounceIntensity: 1
   m_ColorTemperature: 6570
   m_UseColorTemperature: 0
-  m_BoundingSphereOverride: {x: 6.5e-43, y: -1.8118537e+32, z: 6.5e-43, w: NaN}
+  m_BoundingSphereOverride: {x: -0.0000000011535726, y: -0.0000026452726, z: 4e-45, w: -0.0002632141}
   m_UseBoundingSphereOverride: 0
   m_UseViewFrustumForShadowCasterCull: 1
   m_ShadowRadius: 0
@@ -17674,7 +17680,8 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
-    m_RemovedComponents: []
+    m_RemovedComponents:
+    - {fileID: 8366902427766707964, guid: c72778ad3d61c1c4286eb3a2aeb02741, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents: []
